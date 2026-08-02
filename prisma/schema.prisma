@@ -1,0 +1,335 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int              @id @default(autoincrement())
+  email                String           @unique
+  passwordHash         String
+  role                 String           @default("user")
+  firstName            String?
+  lastName             String?
+  phone                String?
+  country              String?
+  isActive             Boolean          @default(true)
+  isEmailVerified      Boolean          @default(false)
+  emailVerifyToken     String?
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  twoFactorSecret      String?
+  twoFactorEnabled     Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  refreshTokens        RefreshToken[]
+  idempotencyKeys      IdempotencyKey[]
+  packages             Package[]
+  raffles              Raffle[]
+  tickets              Ticket[]
+  reservations         Reservation[]
+  cart                 Cart?
+
+  // FASE 5
+  notifications        Notification[]
+  drawsWon             Draw[]           @relation("DrawWinnerUser")
+
+  // FASE 8 - PROVEEDOR (modelo se mantiene, registro público desactivado)
+  provider             Provider?
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model IdempotencyKey {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  response  Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+model Package {
+  id          Int      @id @default(autoincrement())
+  ownerId     Int
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  imageKey    String?
+  videoKey    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  raffles     Raffle[]
+
+  @@index([ownerId])
+}
+
+model Raffle {
+  id            Int           @id @default(autoincrement())
+  packageId     Int
+  package       Package       @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  ownerId       Int
+  owner         User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  prizeImageKey String?
+  totalTickets  Int
+  ticketPrice   Decimal       @db.Decimal(10, 2)
+  currency      String        @default("USD")
+  // CAMBIO: default sigue como "draft" en schema, pero el service lo crea como "active"
+  status        String        @default("draft")
+  // CAMBIO: campo para almacenar el link compartible generado automáticamente
+  shareLink     String?
+  drawAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  tickets       Ticket[]
+  reservations  Reservation[]
+  cartItems     CartItem[]
+
+  // FASE 5
+  draw          Draw?
+
+  // FASE 8 - PREMIOS (múltiples productos)
+  prizes        RafflePrize[]
+
+  @@index([packageId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+model Cart {
+  id        Int        @id @default(autoincrement())
+  userId    Int        @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  items     CartItem[]
+}
+
+model CartItem {
+  id        Int      @id @default(autoincrement())
+  cartId    Int
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  raffleId  Int
+  raffle    Raffle   @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, raffleId])
+  @@index([cartId])
+  @@index([raffleId])
+}
+
+model Ticket {
+  id            Int           @id @default(autoincrement())
+  raffleId      Int
+  raffle        Raffle        @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  userId        Int
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quantity      Int
+  unitPrice     Decimal       @db.Decimal(10, 2)
+  currency      String        @default("USD")
+  status        String        @default("reserved")
+  reservationId Int?          @unique
+  reservation   Reservation?  @relation(fields: [reservationId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // FASE 5 (back relation)
+  winningDraw   Draw?
+
+  @@index([raffleId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Reservation {
+  id        Int      @id @default(autoincrement())
+  raffleId  Int
+  raffle    Raffle   @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quantity  Int
+  status    String   @default("reserved")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ticket    Ticket?
+
+  @@index([raffleId])
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, id])
+  @@index([userId, readAt])
+}
+
+model Draw {
+  id              Int       @id @default(autoincrement())
+  raffleId        Int       @unique
+  raffle          Raffle    @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+
+  winnerUserId    Int
+  winnerUser      User      @relation("DrawWinnerUser", fields: [winnerUserId], references: [id], onDelete: Restrict)
+
+  winnerTicketId  Int?      @unique
+  winnerTicket    Ticket?   @relation(fields: [winnerTicketId], references: [id], onDelete: Restrict)
+
+  executedAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+}
+
+// ─── FASE 6 ───────────────────────────────────────────────
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String
+  entity     String
+  entityId   Int?
+  meta       Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model HistoryEntry {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  title     String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, id])
+  @@index([createdAt])
+}
+
+model Claim {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  raffleId    Int?
+  ticketId    Int?
+  status      String   @default("open")
+  subject     String
+  description String
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([raffleId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─── FASE 7 ───────────────────────────────────────────────
+
+model Policy {
+  id        Int      @id @default(autoincrement())
+  type      String
+  title     String
+  content   String
+  locale    String   @default("es")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, locale])
+  @@index([isActive])
+}
+
+model AppConfig {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── FASE 8 - PROVEEDORES (modelo se mantiene, registro público desactivado) ─────
+
+model Provider {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName    String
+  description     String?
+  logoKey         String?
+  phone           String?
+  address         String?
+  city            String?
+  country         String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  products        Product[]
+
+  @@index([isActive])
+}
+
+model Product {
+  id                Int           @id @default(autoincrement())
+  providerId        Int
+  provider          Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  imageKey          String?
+  videoKey          String?
+  price             Decimal       @db.Decimal(10, 2)
+  currency          String        @default("USD")
+  claimAddress      String?
+  stock             Int           @default(0)
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  rafflePrizes      RafflePrize[]
+
+  @@index([providerId])
+  @@index([isActive, stock])
+}
+
+model RafflePrize {
+  id        Int      @id @default(autoincrement())
+  raffleId  Int
+  raffle    Raffle   @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  position  Int
+  createdAt DateTime @default(now())
+
+  @@unique([raffleId, productId])
+  @@index([raffleId])
+  @@index([productId])
+}
