@@ -3,8 +3,8 @@ const { PrismaClient } = require('@prisma/client');
 
 let prisma;
 
-async function connectDatabase() {
-  prisma = new PrismaClient({
+function createPrismaClient() {
+  return new PrismaClient({
     log: ['error'],
     datasources: {
       db: {
@@ -12,12 +12,20 @@ async function connectDatabase() {
       }
     }
   });
+}
 
-  // Pool controlado vía DATABASE_URL connection_limit param
+async function connectDatabase() {
+  if (!prisma) {
+    prisma = createPrismaClient();
+  }
   await prisma.$connect();
+  return prisma;
 }
 
 function getPrisma() {
+  if (!prisma) {
+    prisma = createPrismaClient();
+  }
   return prisma;
 }
 
