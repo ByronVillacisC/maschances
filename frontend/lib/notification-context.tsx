@@ -30,15 +30,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const { isAuthenticated } = useAuth();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const unreadCount = (notifications ?? []).filter((n: any) => !n?.read).length;
+  const safeNotifications = Array.isArray(notifications) ? notifications : [];
+  const unreadCount = safeNotifications.filter((n: any) => !n?.read).length;
 
   const fetchNotifications = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get("/notifications");
-      setNotifications(res?.data?.notifications ?? res?.data?.items ?? res?.data ?? []);
+      const payload = res?.data?.data ?? res?.data;
+      const list = payload?.notifications ?? payload?.items ?? payload;
+      setNotifications(Array.isArray(list) ? list : []);
     } catch {
-      /* ignore */
+      setNotifications([]);
     } finally {
       setLoading(false);
     }
@@ -48,7 +51,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     try {
       await api.put(`/notifications/${id}/read`);
       setNotifications((prev: any) =>
-        (prev ?? []).map((n: any) => (n?.id === id ? { ...(n ?? {}), read: true } : n))
+        (Array.isArray(prev) ? prev : []).map((n: any) => (n?.id === id ? { ...(n ?? {}), read: true } : n))
       );
     } catch { /* ignore */ }
   }, []);
@@ -57,7 +60,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     try {
       await api.put("/notifications/read-all");
       setNotifications((prev: any) =>
-        (prev ?? []).map((n: any) => ({ ...(n ?? {}), read: true }))
+        (Array.isArray(prev) ? prev : []).map((n: any) => ({ ...(n ?? {}), read: true }))
       );
     } catch { /* ignore */ }
   }, []);
@@ -76,7 +79,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, loading, fetchNotifications, markAsRead, markAllAsRead }}
+      value={{ notifications: safeNotifications, unreadCount, loading, fetchNotifications, markAsRead, markAllAsRead }}
     >
       {children}
     </NotificationContext.Provider>

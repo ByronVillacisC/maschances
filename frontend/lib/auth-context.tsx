@@ -6,7 +6,9 @@ import api from "@/lib/api";
 interface User {
   id: string;
   email: string;
-  name: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
   role: string;
   phone?: string | null;
   avatar?: string | null;
@@ -30,21 +32,33 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function extractPayload(res: any) {
+  return res?.data?.data ?? res?.data ?? null;
+}
+
+function extractUser(res: any): User | null {
+  const payload = extractPayload(res);
+  const u = payload?.user ?? payload;
+  if (!u || typeof u !== "object" || !u.id) return null;
+  return {
+    ...u,
+    name: u.name ?? ([u.firstName, u.lastName].filter(Boolean).join(" ") || u.email),
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pending2FA, setPending2FA] = useState(false);
+  const [pending2FA, setPending2FA] = useState<any>(false);
   const [skipInitialRefresh, setSkipInitialRefresh] = useState(false);
 
   const refreshUser = useCallback(async () => {
     try {
       const res = await api.get("/auth/me");
-      setUser(res?.data?.user ?? res?.data ?? null);
+      setUser(extractUser(res));
       setError(null);
     } catch (err: any) {
-      // Solo limpia el usuario si es un error real de autenticación
-      // No en caso de red caída o backend no disponible
       const status = err?.response?.status;
       if (status === 401 || status === 403) {
         setUser(null);
@@ -55,7 +69,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // CRÍTICO: No refrescar inmediatamente si viene de login
     if (!skipInitialRefresh) {
       refreshUser();
     } else {
@@ -67,23 +80,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
       const res = await api.post("/auth/login", { email, password });
-      
-      if (res?.data?.requires2FA) {
-        setPending2FA(true);
+      const payload = extractPayload(res);
+
+      if (payload?.requires2FA) {
+        setPending2FA(payload.userId ?? true);
         return { requires2FA: true };
       }
-      
-      const userData = res?.data?.user ?? res?.data ?? null;
-      
-      // CRÍTICO: Setear el usuario INMEDIATAMENTE y marcar que venimos de login
+
+      const userData = extractUser(res);
       setUser(userData);
       setPending2FA(false);
       setSkipInitialRefresh(true);
       setLoading(false);
-      
+
       return {};
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? err?.response?.data?.error ?? "Error al iniciar sesión";
+      const rawMsg = err?.response?.data?.message ?? err?.response?.data?.error;
+      const msg = typeof rawMsg === "string" ? rawMsg : "Error al iniciar sesión";
       setError(msg);
       throw new Error(msg);
     }
@@ -93,17 +106,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
       const res = await api.post("/auth/2fa/verify", { userId: pending2FA, token: code });
-      
-      const userData = res?.data?.user ?? res?.data ?? null;
-      
-      // CRÍTICO: Setear el usuario INMEDIATAMENTE y marcar que venimos de login
+      const userData = extractUser(res);
+
       setUser(userData);
       setPending2FA(false);
       setSkipInitialRefresh(true);
       setLoading(false);
-      
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? "Código 2FA inválido";
+      const rawMsg = err?.response?.data?.message;
+      const msg = typeof rawMsg === "string" ? rawMsg : "Código 2FA inválido";
       setError(msg);
       throw new Error(msg);
     }
@@ -113,12 +124,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
       const res = await api.post("/auth/register", data);
-      const userData = res?.data?.user ?? res?.data ?? null;
+      const userData = extractUser(res);
       setUser(userData);
       setSkipInitialRefresh(true);
       setLoading(false);
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? "Error al registrarse";
+      const rawMsg = err?.response?.data?.message;
+      const msg = typeof rawMsg === "string" ? rawMsg : "Error al registrarse";
       setError(msg);
       throw new Error(msg);
     }
@@ -128,12 +140,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
       const res = await api.post("/auth/register-provider", data);
-      const userData = res?.data?.provider?.user ?? res?.data?.user ?? res?.data ?? null;
+      const payload = extractPayload(res);
+      const userData = extractUser({ data: payload?.provider?.user ?? payload?.user ?? payload });
       setUser(userData);
       setSkipInitialRefresh(true);
       setLoading(false);
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? "Error al registrar proveedor";
+      const rawMsg = err?.response?.data?.message;
+      const msg = typeof rawMsg === "string" ? rawMsg : "Error al registrar proveedor";
       setError(msg);
       throw new Error(msg);
     }
@@ -161,18 +175,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ 
-        user, 
-        loading, 
-        error, 
-        login, 
-        verify2FA, 
-        register, 
-        registerProvider, 
-        logout, 
-        refreshUser, 
-        isAuthenticated, 
-        hasRole 
+      value={{
+        user,
+        loading,
+        error,
+        login,
+        verify2FA,
+        register,
+        registerProvider,
+        logout,
+        refreshUser,
+        isAuthenticated,
+        hasRole
       }}
     >
       {children}

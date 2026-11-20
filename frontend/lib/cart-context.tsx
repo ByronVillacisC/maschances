@@ -33,14 +33,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const total = (items ?? []).reduce((sum: number, item: any) => sum + (item?.total ?? 0), 0);
-  const count = (items ?? []).reduce((sum: number, item: any) => sum + (item?.quantity ?? 0), 0);
+  const safeItems = Array.isArray(items) ? items : [];
+  const total = safeItems.reduce((sum: number, item: any) => sum + (item?.total ?? 0), 0);
+  const count = safeItems.reduce((sum: number, item: any) => sum + (item?.quantity ?? 0), 0);
 
   const fetchCart = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get("/cart");
-      setItems(res?.data?.items ?? res?.data ?? []);
+      const payload = res?.data?.data ?? res?.data;
+      const list = payload?.items ?? payload?.cart?.items ?? payload;
+      setItems(Array.isArray(list) ? list : []);
     } catch {
       setItems([]);
     } finally {
@@ -66,14 +69,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const checkout = useCallback(async () => {
     const res = await api.post("/cart/checkout");
     setItems([]);
-    return res?.data;
+    return res?.data?.data ?? res?.data;
   }, []);
 
   const clearCart = useCallback(() => setItems([]), []);
 
   return (
     <CartContext.Provider
-      value={{ items, loading, total, count, fetchCart, addToCart, removeFromCart, updateQuantity, checkout, clearCart }}
+      value={{ items: safeItems, loading, total, count, fetchCart, addToCart, removeFromCart, updateQuantity, checkout, clearCart }}
     >
       {children}
     </CartContext.Provider>
