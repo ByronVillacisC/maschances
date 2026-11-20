@@ -4,25 +4,36 @@ const logger = require('../utils/logger');
 
 let redis;
 
-async function connectRedis() {
-  redis = new Redis(process.env.REDIS_URL, {
+function createRedisClient() {
+  const client = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
-    enableReadyCheck: true
+    enableReadyCheck: false,
+    lazyConnect: true
   });
 
-  redis.on('error', (err) => {
+  client.on('error', (err) => {
     logger.error({ err }, 'Redis connection error');
   });
 
-  redis.on('connect', () => {
+  client.on('connect', () => {
     logger.info('Redis connected');
   });
 
-  // Verificar conexión activa antes de continuar
+  return client;
+}
+
+async function connectRedis() {
+  if (!redis) {
+    redis = createRedisClient();
+  }
   await redis.ping();
+  return redis;
 }
 
 function getRedis() {
+  if (!redis) {
+    redis = createRedisClient();
+  }
   return redis;
 }
 
