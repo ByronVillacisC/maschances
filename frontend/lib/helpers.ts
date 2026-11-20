@@ -98,7 +98,7 @@ export function generateShareLink(raffleId: string | number): string {
 }
 
 
-export function getRoleBadgeColor(role: string): string {
+export function getRoleBadgeColor(role?: string): string {
   switch (role?.toUpperCase()) {
     case 'ADMIN':
       return 'bg-red-100 text-red-800 border-red-200';
