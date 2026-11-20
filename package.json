@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "src/main.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "start": "node src/main.js",
     "dev": "nodemon src/main.js"
   },
@@ -32,9 +33,4 @@
     "prisma": "^5.0.0",
     "nodemon": "^3.0.0"
   }
-  "scripts": {
-    "postinstall": "prisma generate",
-    "start": "node src/server.js"
-  }
-
 }
