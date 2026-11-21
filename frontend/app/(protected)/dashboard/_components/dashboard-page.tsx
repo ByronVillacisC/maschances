@@ -20,12 +20,19 @@ export function DashboardPage() {
 
   useEffect(() => {
     api.get("/tickets?limit=5").then((res: any) => {
-      setRecentTickets(res?.data?.items ?? res?.data?.tickets ?? res?.data ?? []);
-    }).catch(() => {});
+      const payload = res?.data?.data ?? res?.data;
+      const list = payload?.items ?? payload?.tickets ?? payload;
+      setRecentTickets(Array.isArray(list) ? list : []);
+    }).catch(() => {
+      setRecentTickets([]);
+    });
     api.get("/users/me/stats").then((res: any) => {
-      setStats(res?.data ?? {});
+      const payload = res?.data?.data ?? res?.data;
+      setStats(payload && typeof payload === "object" ? payload : {});
     }).catch(() => {});
   }, []);
+
+  const safeTickets = Array.isArray(recentTickets) ? recentTickets : [];
 
   const quickLinks = [
     { href: "/catalog", label: "Ver Sorteos", icon: Trophy, color: "text-amber-500" },
@@ -93,11 +100,11 @@ export function DashboardPage() {
             <Link href="/my-tickets"><Button variant="ghost" size="sm" className="gap-1">Ver Todos <ArrowRight className="h-4 w-4" /></Button></Link>
           </div></CardHeader>
           <CardContent>
-            {(recentTickets ?? []).length === 0 ? (
+            {safeTickets.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">Aún no tienes tickets. ¡Explora los sorteos!</p>
             ) : (
               <div className="space-y-3">
-                {(recentTickets ?? []).map((ticket: any) => (
+                {safeTickets.map((ticket: any) => (
                   <div key={ticket?.id ?? Math.random()} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
                     <div className="flex items-center gap-3"><Ticket className="h-5 w-5 text-primary" /><div>
                       <p className="text-sm font-medium">{ticket?.raffleName ?? ticket?.raffle?.name ?? "Sorteo"}</p>
