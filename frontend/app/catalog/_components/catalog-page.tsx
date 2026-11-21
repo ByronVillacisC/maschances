@@ -30,15 +30,16 @@ export function CatalogPage() {
       if (search) params.search = search;
       if (!reset && cursor) params.cursor = cursor;
       const res = await api.get("/raffles", { params });
-      const data = res?.data;
-      const items = data?.items ?? data?.raffles ?? data ?? [];
+      const payload = res?.data?.data ?? res?.data;
+      const rawItems = payload?.items ?? payload?.raffles ?? payload;
+      const items = Array.isArray(rawItems) ? rawItems : [];
       if (reset) {
         setRaffles(items);
       } else {
-        setRaffles((prev: any[]) => [...(prev ?? []), ...items]);
+        setRaffles((prev: any[]) => [...(Array.isArray(prev) ? prev : []), ...items]);
       }
-      setCursor(data?.nextCursor ?? data?.cursor ?? null);
-      setHasMore(!!(data?.nextCursor ?? data?.hasMore));
+      setCursor(payload?.nextCursor ?? payload?.cursor ?? null);
+      setHasMore(!!(payload?.nextCursor ?? payload?.hasMore));
     } catch {
       if (reset) setRaffles([]);
     } finally {
@@ -56,18 +57,18 @@ export function CatalogPage() {
     fetchRaffles(true);
   };
 
+  const safeRaffles = Array.isArray(raffles) ? raffles : [];
+
   return (
     <div className="min-h-screen flex flex-col">
       <AppHeader />
       <main className="flex-1">
         <div className="mx-auto max-w-[1200px] px-4 py-8">
-          {/* Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
             <h1 className="font-display text-3xl font-bold tracking-tight mb-2">Catálogo de Sorteos</h1>
             <p className="text-muted-foreground">Explora todos los sorteos disponibles y participa</p>
           </motion.div>
 
-          {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-8">
             <form onSubmit={handleSearch} className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -103,15 +104,14 @@ export function CatalogPage() {
             </Select>
           </div>
 
-          {/* Results */}
           {loading ? (
             <LoadingSpinner text="Cargando sorteos..." fullPage />
-          ) : (raffles ?? []).length === 0 ? (
+          ) : safeRaffles.length === 0 ? (
             <EmptyState icon={Trophy} title="No hay sorteos" description="No se encontraron sorteos con los filtros seleccionados." />
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {(raffles ?? []).map((raffle: any, i: number) => (
+                {safeRaffles.map((raffle: any, i: number) => (
                   <motion.div
                     key={raffle?.id ?? i}
                     initial={{ opacity: 0, y: 20 }}

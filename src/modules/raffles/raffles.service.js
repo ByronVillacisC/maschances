@@ -3,9 +3,6 @@ const { uploadFile, deleteFile, getSignedFileUrl } = require('../../services/sto
 const { validateFile } = require('../../utils/fileValidator');
 const { parsePagination, buildCursorWhere, getNextCursor } = require('../../utils/pagination');
 
-// FASE 5
-const drawQueue = require('../../queues/draw.queue');
-
 const SAFE_RAFFLE_FIELDS = {
   id: true,
   packageId: true,
@@ -17,7 +14,6 @@ const SAFE_RAFFLE_FIELDS = {
   ticketPrice: true,
   currency: true,
   status: true,
-  // CAMBIO: incluir shareLink en los campos seguros
   shareLink: true,
   drawAt: true,
   createdAt: true,
@@ -25,9 +21,17 @@ const SAFE_RAFFLE_FIELDS = {
 };
 
 async function _withSignedUrls(raffle) {
+  let prizeImageUrl = null;
+  if (raffle.prizeImageKey) {
+    try {
+      prizeImageUrl = await getSignedFileUrl(raffle.prizeImageKey);
+    } catch (_) {
+      prizeImageUrl = null;
+    }
+  }
   return {
     ...raffle,
-    prizeImageUrl: raffle.prizeImageKey ? await getSignedFileUrl(raffle.prizeImageKey) : null,
+    prizeImageUrl,
     prizeImageKey: undefined
   };
 }
@@ -61,7 +65,6 @@ async function getRaffleById(id) {
 async function createRaffle(ownerId, data) {
   const prisma = getPrisma();
 
-  // Verificar que el package existe y pertenece al owner (o es admin)
   const pkg = await prisma.package.findUnique({ where: { id: data.packageId } });
   if (!pkg) throw { status: 404, message: 'Paquete no encontrado' };
   if (pkg.ownerId !== ownerId) throw { status: 403, message: 'No eres el owner de este paquete' };
@@ -76,17 +79,14 @@ async function createRaffle(ownerId, data) {
       ticketPrice: data.ticketPrice,
       currency: data.currency || 'USD',
       drawAt: data.drawAt ? new Date(data.drawAt) : null,
-      // CAMBIO: estado inicial 'active' en lugar de 'draft'
       status: 'active'
     },
     select: SAFE_RAFFLE_FIELDS
   });
 
-  // CAMBIO: generar automáticamente el link compartible
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://vercel.app';
   const shareLink = `${frontendUrl}/catalog/${raffle.id}`;
 
-  // Actualizar el sorteo con el shareLink generado
   const updatedRaffle = await prisma.raffle.update({
     where: { id: raffle.id },
     data: { shareLink },
@@ -121,8 +121,6 @@ async function updateRaffle(id, userId, role, data) {
     select: SAFE_RAFFLE_FIELDS
   });
 
-  // FASE 5: producer → al cerrar, encolar job draw.
-  // IMPORTANTE: si existe drawAt futuro, se encola con delay hasta drawAt (para no "skipping" prematuro).
   if (updateData.status === 'closed' && prevStatus !== 'closed' && prevStatus !== 'drawn') {
     const jobId = `raffle:${updated.id}`;
     const delayMs =
@@ -131,6 +129,7 @@ async function updateRaffle(id, userId, role, data) {
         : 0;
 
     try {
+      const drawQueue = require('../../queues/draw.queue');
       await drawQueue.add(
         { raffleId: updated.id },
         {
@@ -143,7 +142,7 @@ async function updateRaffle(id, userId, role, data) {
         }
       );
     } catch (_) {
-      // Si el job ya existe, no hacemos nada (evita duplicidad)
+      // Ignora si el job ya existe o Redis queue no está disponible en serverless
     }
   }
 
@@ -158,7 +157,6 @@ async function deleteRaffle(id, userId, role) {
   const isAdmin = ['admin', 'superadmin'].includes(role);
   if (!isAdmin && raffle.ownerId !== userId) throw { status: 403, message: 'Acceso denegado' };
 
-  // CAMBIO: permitir eliminar sorteos en draft o active (antes solo draft)
   if (!['draft', 'active'].includes(raffle.status)) {
     throw { status: 400, message: 'Solo se pueden eliminar sorteos en estado draft o active' };
   }
