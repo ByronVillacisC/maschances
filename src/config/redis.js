@@ -5,10 +5,14 @@ const logger = require('../utils/logger');
 let redis;
 
 function createRedisClient() {
-  const client = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null,
+  const url = process.env.REDIS_URL || 'redis://localhost:6379';
+  const isTls = url.startsWith('rediss://');
+
+  const client = new Redis(url, {
+    maxRetriesPerRequest: 1,
+    connectTimeout: 3000,
     enableReadyCheck: false,
-    lazyConnect: true
+    ...(isTls ? { tls: { rejectUnauthorized: false } } : {})
   });
 
   client.on('error', (err) => {
